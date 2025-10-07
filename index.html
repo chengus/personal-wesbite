@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Lucent Lu Personal Website">
+    <title>Lucent Lu - Home</title>
+    <style>
+        body {
+        margin: 0;
+        display: flex;
+        flex-direction: row;
+        min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            padding: 2rem;
+            width: 300px;
+            flex-shrink: 0;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 1;
+            background-color: #fff;
+        }
+
+        .sidebar h1 {
+            margin-top: 0;
+            font-size: 1.8em;
+        }
+
+        .profile-img {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            object-fit: cover;
+            object-position: center;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+
+        .contact-info {
+            margin-top: 1rem;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+
+        /* Main content (iframe) */
+        .main-content {
+            flex: 1;
+            height: 100vh;
+            border: none;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* Responsive layout for mobile */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                box-shadow: none;
+                border-bottom: 1px solid #ddd;
+            }
+
+            .main-content {
+                flex: none;
+                width: 100%;
+                height: calc(100vh - 400px); /* fills remaining height below sidebar */
+            }
+
+            .profile-img {
+                width: 120px;
+                height: 120px;
+            }
+        }
+    </style>
+    </head>
+    <body>
+    <div class="sidebar">
+        <img src="banner.webp" alt="Lucent Lu Banner" class="profile-img">
+        <h1>Lucent Lu</h1>
+        <div class="contact-info">
+        📧 <a href="mailto:chenglu.lucent@gmail.com">chenglu.lucent@gmail.com</a><br>
+        🇺🇸 +1 (518) 308-5560 | 🇭🇰 +852 97945525<br>
+        NYC & Hong Kong<br>
+        Website: <a href="https://lucentlu.com">lucentlu.com</a><br>
+        <a href="https://www.linkedin.com/in/lucent-lu/" target="_blank">LinkedIn</a> | 
+        <a href="https://drive.google.com/file/d/1LtDgl3b4CVscj18JsZjrVaSOdqrighNp/view?usp=sharing" target="_blank">Resume</a> | 
+        <a href="https://lucentlu.bearblog.dev/" target="_blank">Blog 👉</a>
+        </div>
+    </div>
+
+
+    <div class="main-content">
+        <iframe src="https://lucentlu.bearblog.dev/" title="Lucent Lu Blog"></iframe>
+    </div>
+    </body>
+
+</html>
