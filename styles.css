@@ -1,150 +1,153 @@
+@import url('https://fonts.googleapis.com/css2?family=Libertinus+Math&display=swap');
+
 /* Make sizing predictable and avoid unexpected overflow */
     * { box-sizing: border-box; }
 
     html, body { max-width: 100%; overflow-x: hidden; }
 
-        body {
-        margin: 0;
+    body {
+    margin: 0;
+    display: flex;
+    flex-direction: row;
+    min-height: 100vh;
+    font-family: 'Libertinus Math', 'Times New Roman';
+    }
+
+    /* Sidebar / top bar (becomes sticky on mobile) */
+    .sidebar {
+        padding: 2rem;
+        width: 300px;
+        flex-shrink: 0;
+        box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
         display: flex;
-        flex-direction: row;
-        min-height: 100vh;
-        }
+        flex-direction: column;
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        background-color: #fff;
+    }
 
-        /* Sidebar / top bar (becomes sticky on mobile) */
-        .sidebar {
-            padding: 2rem;
-            width: 300px;
-            flex-shrink: 0;
-            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
-            display: flex;
+    .sidebar h1 {
+        margin-top: 0;
+        font-size: 1.8em;
+        object-position: center;
+
+    }
+
+    .profile-img {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        object-fit: cover;
+        object-position: center;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        object-position: center;
+    }
+
+    /* Row wrapper so we can switch between column (desktop) and row (mobile) */
+    .profile-row {
+        display: flex;
+        flex-direction: column; /* default: stacked */
+        gap: 1rem;
+        align-items: center;
+        width: 100%;
+    }
+
+    .profile-left {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .profile-name {
+        margin: 0.25rem 0 0 0;
+        font-size: 1.8em;
+    }
+
+    .contact-info {
+        margin-top: 1rem;
+        font-size: 0.95em;
+        line-height: 1.6;
+    }
+
+    /* Main content (iframe) */
+    .main-content {
+        flex: 1;
+        min-width: 0; /* allow flex child to shrink and prevent horizontal overflow */
+        height: 100vh;
+        border: none;
+    }
+
+    iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+    }
+
+    /* Responsive layout for mobile */
+    @media (max-width: 768px) {
+        body {
             flex-direction: column;
-            position: sticky;
-            top: 0;
-            z-index: 999;
-            background-color: #fff;
+            overflow-x: hidden;
         }
 
-        .sidebar h1 {
-            margin-top: 0;
-            font-size: 1.8em;
-            object-position: center;
+        .sidebar {
+            width: 100%;
+            box-shadow: none;
+            border-bottom: 1px solid #ddd;
+            padding: 0.75rem 1rem;
+        }
 
+        .main-content {
+            flex: none;
+            width: 100%;
+            height: calc(100vh - 400px); /* fills remaining height below sidebar */
         }
 
         .profile-img {
-            width: 150px;
-            height: 150px;
-            border-radius: 50%;
-            object-fit: cover;
-            object-position: center;
-            margin-bottom: 1rem;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-            object-position: center;
+            width: 72px;
+            height: 72px;
+            margin-bottom: 0;
         }
 
-        /* Row wrapper so we can switch between column (desktop) and row (mobile) */
+        /* On mobile, put the image and name stacked on the left and details to the right */
         .profile-row {
-            display: flex;
-            flex-direction: column; /* default: stacked */
-            gap: 1rem;
+            flex-direction: row;
             align-items: center;
+            gap: 0.75rem;
             width: 100%;
+            justify-content: flex-start; /* keep columns close together */
         }
 
+        /* Keep the image above the name */
         .profile-left {
-            display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: flex-start;
+            gap: 0.25rem;
         }
 
         .profile-name {
-            margin: 0.25rem 0 0 0;
-            font-size: 1.8em;
+            font-size: 1.15rem;
+            margin: 0;
+        }
+
+        /* Allow the right column to wrap and take remaining space without forcing overflow */
+        .profile-right {
+            flex: 1 1 auto;
+            text-align: left; /* keep details adjacent to the image */
+            word-wrap: break-word;
+            white-space: normal;
+            margin-left: 0.5rem;
         }
 
         .contact-info {
-            margin-top: 1rem;
-            font-size: 0.95em;
-            line-height: 1.6;
-        }
-
-        /* Main content (iframe) */
-        .main-content {
-            flex: 1;
-            min-width: 0; /* allow flex child to shrink and prevent horizontal overflow */
-            height: 100vh;
-            border: none;
+            text-align: right;
+            font-size: 0.9rem;
+            line-height: 1.4;
         }
 
         iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
+            height: calc(100vh - 150px); /* adjust height for smaller sidebar */
         }
-
-        /* Responsive layout for mobile */
-        @media (max-width: 768px) {
-            body {
-                flex-direction: column;
-                overflow-x: hidden;
-            }
-
-            .sidebar {
-                width: 100%;
-                box-shadow: none;
-                border-bottom: 1px solid #ddd;
-                padding: 0.75rem 1rem;
-            }
-
-            .main-content {
-                flex: none;
-                width: 100%;
-                height: calc(100vh - 400px); /* fills remaining height below sidebar */
-            }
-
-            .profile-img {
-                width: 72px;
-                height: 72px;
-                margin-bottom: 0;
-            }
-
-            /* On mobile, put the image and name stacked on the left and details to the right */
-            .profile-row {
-                flex-direction: row;
-                align-items: center;
-                gap: 0.75rem;
-                width: 100%;
-                justify-content: flex-start; /* keep columns close together */
-            }
-
-            /* Keep the image above the name */
-            .profile-left {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 0.25rem;
-            }
-
-            .profile-name {
-                font-size: 1.15rem;
-                margin: 0;
-            }
-
-            /* Allow the right column to wrap and take remaining space without forcing overflow */
-            .profile-right {
-                flex: 1 1 auto;
-                text-align: left; /* keep details adjacent to the image */
-                word-wrap: break-word;
-                white-space: normal;
-                margin-left: 0.5rem;
-            }
-
-            .contact-info {
-                text-align: right;
-                font-size: 0.9rem;
-                line-height: 1.4;
-            }
-
-            iframe {
-                height: calc(100vh - 150px); /* adjust height for smaller sidebar */
-            }
-        }
+    }
