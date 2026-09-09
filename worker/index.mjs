@@ -56,7 +56,7 @@ async function showConversation(env, access) {
 <p><strong>Bookmark this page.</strong> This secret link is your conversation. Anyone with it can read and send messages. There is no email recovery.</p>
 <p><a href="${path}">Check for replies</a> · Expires ${new Date(thread.expires_at).toISOString().slice(0, 10)} (UTC)</p>
 ${results.map(m => `<article><h2 class="message-author">${m.role === 'visitor' ? 'You' : 'Lucent'}</h2><small><time datetime="${new Date(m.created_at).toISOString()}">${new Date(m.created_at).toISOString().slice(0, 16).replace('T', ' ')} UTC</time></small><p class="message-body">${escape(m.body)}</p></article>`).join('')}
-${pending ? '<p role="status">Your message is saved. Email notification is waiting to be sent; you do not need to submit it again.</p>' : waiting ? '<p role="status"><em>LucentGPT is thinking. Come back when Lucent has checked his email.</em></p>' : ''}
+${pending ? '<p role="status">Your message is saved. Email notification is waiting to be sent; you do not need to submit it again.</p>' : waiting ? '<p role="status"><em>LucentGPT is thinking. Come back when I check my email.</em></p>' : ''}
 ${results.length >= 200 ? '<p>This conversation is full. You can start a new one from the homepage.</p>' : `<form action="${path}" method="post"><input type="hidden" name="request_id" value="${crypto.randomUUID()}"><p><label for="message">Your next message</label><br><textarea id="message" name="message" rows="6" maxlength="10000" required></textarea></p><div hidden aria-hidden="true"><label for="website">Leave this empty</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div><button type="submit">Send to LucentGPT</button></form>`}`);
 }
 
