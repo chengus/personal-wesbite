@@ -1,0 +1,23 @@
+{
+  "name": "lucentgpt",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test worker/index.test.mjs",
+    "build": "sh build.sh",
+    "dev": "wrangler dev --config worker/wrangler.toml",
+    "check:worker": "wrangler deploy --dry-run --config worker/wrangler.toml"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "postal-mime": "^3.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.130.0"
+  },
+  "overrides": {
+    "sharp": "0.35.4"
+  }
+}

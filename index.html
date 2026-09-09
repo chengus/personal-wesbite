@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Lucent Lu Personal Website">
-    <script defer src="https://cloud.umami.is/script.js" data-website-id="3992ddd3-8935-449c-96aa-dccd2161b22d"></script>
     <title>Lucent Lu - Home</title>
     <link rel="stylesheet" href="styles.css">
     </head>
@@ -21,18 +20,40 @@
                 🇺🇸 +1 (518) 308-5560<br>
                 🇭🇰 +852 97945525<br>
                 NYC & Hong Kong<br>
-                Website: <a href="https://lucentlu.com">lucentlu.com</a><br>
-                <a href="https://www.linkedin.com/in/lucent-lu/" target="_blank">LinkedIn</a> | 
-                <a href="https://drive.google.com/file/d/1LtDgl3b4CVscj18JsZjrVaSOdqrighNp/view?usp=sharing" target="_blank">Resume</a> | 
-                <a href="https://github.com/chengus" target="_blank">Github</a>
+                <nav aria-label="Personal links">
+                <a href="https://www.linkedin.com/in/lucent-lu/" target="_blank" rel="noopener">LinkedIn</a> |
+                <a href="https://drive.google.com/file/d/1LtDgl3b4CVscj18JsZjrVaSOdqrighNp/view?usp=sharing" target="_blank" rel="noopener">Resume</a> |
+                <a href="https://github.com/chengus" target="_blank" rel="noopener">Github</a> |
+                <a href="https://lucentlu.bearblog.dev/">Blog</a>
+                </nav>
             </div>
         </div>
     </div>
 
 
-    <div class="main-content">
-        <iframe loading="lazy" src="https://lucentlu.bearblog.dev/" title="Lucent Lu Blog"></iframe>
-    </div>
+    <main class="main-content">
+        <h2>LucentGPT</h2>
+        <p><em>A large language human.</em></p>
+        <p>Ask/Tell me anything <b>anonymously</b> (trust me bro).</p>
+        <form action="https://lucentlu.com/api/message" method="post">
+            <p>
+                <label for="message">Your message</label><br>
+                <textarea id="message" name="message" rows="8" maxlength="10000" required placeholder="What's on your mind?"></textarea>
+            </p>
+            <div hidden aria-hidden="true">
+                <label for="website">Leave this empty</label>
+                <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+            </div>
+            <button type="submit">Send to LucentGPT</button>
+        </form>
+        <p><small>I see what you write, and, unless you include it, I don't know who you are. 
+            After sending, bookmark your secret conversation link
+            and come back for my reply. <p><small>
+
+            </small>Anyone with the link can read and reply. 
+            Conversations expire after 180 days; lost links cannot be recovered. </small></p>
+        <p><small>Response time: 7-10 business days.</small></p>
+    </main>
     </body>
 
 </html>
