@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import worker, { replyText, easternTimestamp } from './index.mjs';
+import worker, { replyText, easternTimestamp, emailReferences } from './index.mjs';
 
 // Execute the actual migration and SQL against SQLite, with D1's small async API.
 function setup({ mailFailure = false } = {}) {
@@ -10,6 +10,7 @@ function setup({ mailFailure = false } = {}) {
     sqlite.exec('PRAGMA foreign_keys = ON');
     sqlite.exec(readFileSync(new URL('./migrations/0001_conversations.sql', import.meta.url), 'utf8'));
     sqlite.exec(readFileSync(new URL('./migrations/0003_identifier.sql', import.meta.url), 'utf8'));
+    sqlite.exec(readFileSync(new URL('./migrations/0004_email_threading.sql', import.meta.url), 'utf8'));
     const sent = [];
     const state = { mailFailure };
     const DB = {
@@ -31,7 +32,7 @@ function setup({ mailFailure = false } = {}) {
     const env = {
         ALLOWED_ORIGINS: 'https://lucentlu.com', FROM_EMAIL: 'lucentgpt@lucentlu.com',
         TO_EMAIL: 'owner@example.com', REPLY_EMAIL: 'replies@lucentlu.com', DB,
-        EMAIL: { async send(mail) { if (state.mailFailure) throw new Error('Unavailable'); sent.push(mail); } },
+        EMAIL: { async send(mail) { if (state.mailFailure) throw new Error('Unavailable'); sent.push(mail); return { messageId: `<notification-${sent.length}@cloudflare.test>` }; } },
     };
     return { env, sent, sqlite, state };
 }
@@ -254,7 +255,7 @@ test('identifier and original ET submission time appear in safe HTML and plain-t
     ctx.sqlite.prepare('UPDATE messages SET created_at = ?, next_attempt = 0').run(originalTime);
     ctx.state.mailFailure = false;
     await worker.scheduled({}, ctx.env);
-    assert.equal(ctx.sent[0].text, `${identifier} 09/09/2026 15:05 ET:\nFirst line\n<script>second line</script>`);
+    assert.equal(ctx.sent[0].text, `${identifier} 09/09/2026 15:05 ET:\n\nFirst line\n<script>second line</script>`);
     assert.match(ctx.sent[0].html, /&lt;img src=x&gt; &amp; &quot;a role&quot;/);
     assert.match(ctx.sent[0].html, /<small><em>09\/09\/2026 15:05 ET:<\/em><\/small>/);
     assert.doesNotMatch(ctx.sent[0].html, /<script>|<img/);
@@ -279,4 +280,86 @@ test('Eastern timestamps follow daylight saving time and use 24-hour midnight', 
     assert.equal(easternTimestamp(Date.parse('2026-07-10T04:05:00Z')), '07/10/2026 00:05 ET');
     assert.equal(easternTimestamp(Date.parse('2026-03-08T06:59:00Z')), '03/08/2026 01:59 ET');
     assert.equal(easternTimestamp(Date.parse('2026-03-08T07:00:00Z')), '03/08/2026 03:00 ET');
+});
+
+async function followup(ctx, path) {
+    ctx.sqlite.exec("UPDATE messages SET created_at = 0 WHERE role = 'visitor'");
+    const response = await worker.fetch(post(path, { request_id: crypto.randomUUID(), message: 'Followup in the email chain' }), ctx.env);
+    assert.equal(response.status, 303);
+    return ctx.sent.at(-1);
+}
+
+test('website followups reference the provider Message-ID before and after an owner reply', async () => {
+    const ctx = setup(); const path = await start(ctx);
+    assert.equal(ctx.sent[0].headers, undefined);
+    const follow = await followup(ctx, path);
+    assert.deepEqual(follow.headers, {
+        'In-Reply-To': '<notification-1@cloudflare.test>', References: '<notification-1@cloudflare.test>',
+    });
+    assert.equal(follow.subject, 'Re: ' + ctx.sent[0].subject);
+    assert.equal(await incoming(ctx, { extra: 'References: <notification-1@cloudflare.test>\r\nIn-Reply-To: <notification-2@cloudflare.test>\r\n' }), undefined);
+    const next = await followup(ctx, path);
+    assert.deepEqual(next.headers, {
+        'In-Reply-To': '<reply-1@example.com>',
+        References: '<notification-1@cloudflare.test> <notification-2@cloudflare.test> <reply-1@example.com>',
+    });
+    const again = await followup(ctx, path);
+    assert.equal(again.headers['In-Reply-To'], '<notification-3@cloudflare.test>');
+    assert.match(again.headers.References, /^<notification-1@cloudflare.test>/);
+    const html = await (await get(path, ctx.env)).text();
+    assert.doesNotMatch(html, /notification-\d@cloudflare\.test|reply-1@example\.com/);
+});
+
+test('a reply to a pre-upgrade email anchors an existing conversation; duplicate mail cannot move it backward', async () => {
+    const ctx = setup(); const path = await start(ctx);
+    ctx.sqlite.exec('UPDATE messages SET email_message_id = NULL, email_recorded_at = NULL');
+    const options = { extra: 'References: <old-root@gmail.com>\r\nIn-Reply-To: <old-notification@cloudflare.test>\r\n' };
+    assert.equal(await incoming(ctx, options), undefined);
+    const follow = await followup(ctx, path);
+    assert.equal(follow.headers['In-Reply-To'], '<reply-1@example.com>');
+    assert.equal(follow.headers.References, '<old-root@gmail.com> <old-notification@cloudflare.test> <reply-1@example.com>');
+    assert.equal(await incoming(ctx, options), undefined);
+    assert.equal((await followup(ctx, path)).headers['In-Reply-To'], '<notification-2@cloudflare.test>');
+});
+
+test('failed sends retain the previous anchor and retry with valid threading headers', async () => {
+    const ctx = setup(); const path = await start(ctx);
+    ctx.state.mailFailure = true;
+    await followup(ctx, path);
+    assert.equal(ctx.sent.length, 1);
+    assert.equal(ctx.sqlite.prepare('SELECT COUNT(*) AS n FROM messages WHERE email_message_id IS NOT NULL').get().n, 1);
+    ctx.sqlite.exec('UPDATE messages SET next_attempt = 0 WHERE notified = 0');
+    ctx.state.mailFailure = false;
+    await worker.scheduled({}, ctx.env);
+    assert.equal(ctx.sent[1].headers['In-Reply-To'], '<notification-1@cloudflare.test>');
+    assert.equal(ctx.sqlite.prepare('SELECT COUNT(*) AS n FROM messages WHERE email_message_id IS NOT NULL').get().n, 2);
+});
+
+test('long and malformed reference chains are reduced to safe bounded headers', () => {
+    const root = '<root@example.com>';
+    const recent = Array.from({ length: 100 }, (_, i) => `<${i}-${'x'.repeat(80)}@example.com>`);
+    const references = emailReferences(root, recent.join(' '), '\r\nBcc: victim@example.com', '<bad id@example.com>', root);
+    assert.ok(references.startsWith(root + ' '));
+    assert.ok(references.endsWith(recent.at(-1)));
+    assert.ok(references.length <= 1900);
+    assert.doesNotMatch(references, /[\r\n]|Bcc|victim|bad id/);
+});
+
+test('an older binding without returned Message-ID does not retry a successful send or invent a thread ID', async () => {
+    const ctx = setup();
+    ctx.env.EMAIL.send = async mail => { ctx.sent.push(mail); return {}; };
+    const path = await start(ctx);
+    await worker.scheduled({}, ctx.env);
+    assert.equal(ctx.sent.length, 1);
+    assert.equal(await incoming(ctx, { extra: 'In-Reply-To: <real-root@cloudflare.test>\r\n' }), undefined);
+    const follow = await followup(ctx, path);
+    assert.equal(follow.headers['In-Reply-To'], '<reply-1@example.com>');
+    assert.equal(follow.headers.References, '<real-root@cloudflare.test> <reply-1@example.com>');
+});
+
+test('thread anchors are isolated by conversation', async () => {
+    const ctx = setup(); const first = await start(ctx); const second = await start(ctx);
+    assert.equal(ctx.sent[1].headers, undefined);
+    assert.equal((await followup(ctx, first)).headers['In-Reply-To'], '<notification-1@cloudflare.test>');
+    assert.equal((await followup(ctx, second)).headers['In-Reply-To'], '<notification-2@cloudflare.test>');
 });

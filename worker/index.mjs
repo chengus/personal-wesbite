@@ -26,6 +26,24 @@ export function easternTimestamp(timestamp) {
     return `${value('month')}/${value('day')}/${value('year')} ${value('hour')}:${value('minute')} ET`;
 }
 
+// Use only bounded, printable RFC-style IDs in outgoing headers. Never pass
+// raw incoming headers through to the sending API.
+function emailMessageId(value) {
+    if (typeof value !== 'string') return null;
+    let id = value.trim();
+    if (id.startsWith('<') && id.endsWith('>')) id = id.slice(1, -1);
+    if (id.length > 510 || !/^[\x21-\x7e]+$/.test(id) || !/^[^<>@]+@[^<>@]+$/.test(id)) return null;
+    return `<${id}>`;
+}
+
+export function emailReferences(...values) {
+    const ids = [...new Set(values.flatMap(value =>
+        [...(value || '').matchAll(/<[^<>\s]+>/g)].map(match => emailMessageId(match[0])).filter(Boolean)))];
+    // Preserve the root and newest ancestors within Cloudflare's 2,048-byte limit.
+    while (ids.length > 32 || ids.join(' ').length > 1900) ids.splice(1, 1);
+    return ids.join(' ');
+}
+
 function page(title, content, status = 200) {
     return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="strict-origin"><title>${escape(title)} - LucentGPT</title><link rel="stylesheet" href="/styles.css"></head><body><main class="main-content"><h1>${escape(title)}</h1>${content}<p><a href="/">Back to LucentGPT</a></p></main></body></html>`, { status, headers: HEADERS });
 }
@@ -83,15 +101,25 @@ async function notify(env, id) {
         const [local, domain] = env.REPLY_EMAIL.split('@');
         const identifier = thread.identifier || 'Anonymous';
         const timestamp = easternTimestamp(row.created_at);
-        await env.EMAIL.send({
+        const parent = await env.DB.prepare(`SELECT email_message_id, email_references FROM messages
+            WHERE conversation_id = ? AND email_message_id IS NOT NULL
+            ORDER BY email_recorded_at DESC, rowid DESC LIMIT 1`).bind(row.conversation_id).first();
+        const parentId = emailMessageId(parent?.email_message_id);
+        const references = parentId ? emailReferences(parent.email_references, parentId) : '';
+        const sent = await env.EMAIL.send({
             from: { email: env.FROM_EMAIL, name: 'LucentGPT' },
             to: env.TO_EMAIL,
             replyTo: `${local}+${thread.reply_token}@${domain}`,
-            subject: `LucentGPT conversation ${row.conversation_id.slice(0, 12)}`,
-            text: `${identifier} ${timestamp}:\n${row.body}`,
-            html: `<div>${escape(identifier)} <small><em>${timestamp}:</em></small></div><div style="white-space: pre-wrap">${escape(row.body)}</div>`,
+            subject: `${parentId ? 'Re: ' : ''}LucentGPT conversation ${row.conversation_id.slice(0, 12)}`,
+            ...(parentId ? { headers: { 'In-Reply-To': parentId, References: references } } : {}),
+            text: `${identifier} ${timestamp}:\n\n${row.body}`,
+            html: `<div>${escape(identifier)} <small><em>${timestamp}:</em></small></div><br><div style="white-space: pre-wrap">${escape(row.body)}</div>`,
         });
-        await env.DB.prepare('UPDATE messages SET notified = 1 WHERE id = ?').bind(id).run();
+        // Record the provider's actual Message-ID, not an invented ID. If an older
+        // binding returns no usable ID, an incoming owner reply can anchor the chain.
+        await env.DB.prepare(`UPDATE messages SET notified = 1, email_message_id = ?,
+            email_references = ?, email_recorded_at = ? WHERE id = ?`)
+            .bind(emailMessageId(sent?.messageId), references, Date.now(), id).run();
     } catch {
         await env.DB.prepare('UPDATE messages SET next_attempt = ? WHERE id = ?').bind(now + Math.min(3600000, 60000 * 2 ** Math.min(row.attempts, 6)), id).run();
     }
@@ -187,9 +215,11 @@ async function receiveEmail(message, env) {
     if (body.includes(key)) return reject('Reply includes the private reply address. Remove quoted headers and resend.');
     const id = `email:${await hash(`${thread.id}:${parsed.messageId}`)}`;
     if (await env.DB.prepare('SELECT id FROM messages WHERE id = ?').bind(id).first()) return;
-    const result = await env.DB.prepare(`INSERT OR IGNORE INTO messages(id, conversation_id, role, body, created_at, notified)
-        SELECT ?, ?, 'lucent', ?, ?, 1 WHERE (SELECT COUNT(*) FROM messages WHERE conversation_id = ?) < 200`)
-        .bind(id, thread.id, body, Date.now(), thread.id).run();
+    const result = await env.DB.prepare(`INSERT OR IGNORE INTO messages(id, conversation_id, role, body, created_at, notified,
+        email_message_id, email_references, email_recorded_at)
+        SELECT ?, ?, 'lucent', ?, ?, 1, ?, ?, ? WHERE (SELECT COUNT(*) FROM messages WHERE conversation_id = ?) < 200`)
+        .bind(id, thread.id, body, Date.now(), emailMessageId(parsed.messageId),
+            emailReferences(parsed.references, parsed.inReplyTo), Date.now(), thread.id).run();
     if (!result.meta.changes) return reject('Conversation is full.');
 }
 
