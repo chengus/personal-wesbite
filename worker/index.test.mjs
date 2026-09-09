@@ -2,13 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import worker, { replyText } from './index.mjs';
+import worker, { replyText, easternTimestamp } from './index.mjs';
 
 // Execute the actual migration and SQL against SQLite, with D1's small async API.
 function setup({ mailFailure = false } = {}) {
     const sqlite = new DatabaseSync(':memory:');
     sqlite.exec('PRAGMA foreign_keys = ON');
     sqlite.exec(readFileSync(new URL('./migrations/0001_conversations.sql', import.meta.url), 'utf8'));
+    sqlite.exec(readFileSync(new URL('./migrations/0003_identifier.sql', import.meta.url), 'utf8'));
     const sent = [];
     const state = { mailFailure };
     const DB = {
@@ -65,7 +66,7 @@ test('anonymous creation, private escaped page, independent reply capability and
     assert.match(html, /Hello 世界 &lt;script&gt;/);
     assert.match(html, /Bookmark this page/);
     assert.doesNotMatch(html, /<script|umami|type="email"/);
-    assert.equal(response.headers.get('Referrer-Policy'), 'no-referrer');
+    assert.equal(response.headers.get('Referrer-Policy'), 'strict-origin');
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
     assert.match(response.headers.get('Content-Security-Policy'), /frame-ancestors 'none'/);
     assert.match(response.headers.get('X-Robots-Tag'), /noindex/);
@@ -221,4 +222,61 @@ test('new conversations expire after 180 days; migration extends existing 90-day
     ctx.sqlite.prepare('UPDATE conversations SET expires_at = created_at + ?').run(90 * 86400000);
     ctx.sqlite.exec(readFileSync(new URL('./migrations/0002_retention_180_days.sql', import.meta.url), 'utf8'));
     assert.equal(ctx.sqlite.prepare('SELECT expires_at FROM conversations').get().expires_at, thread.expires_at);
+});
+
+test('conversation form preserves browser origin without leaking the secret path through referrers', async () => {
+    const ctx = setup(); const path = await start(ctx);
+    const response = await get(path, ctx.env);
+    const html = await response.text();
+    // Both policies matter: a conflicting meta tag overrides the response header.
+    assert.equal(response.headers.get('Referrer-Policy'), 'strict-origin');
+    assert.match(html, /<meta name="referrer" content="strict-origin">/);
+    assert.doesNotMatch(html, /no-referrer/);
+    const request_id = html.match(/name="request_id" value="([^"]+)"/)[1];
+    ctx.sqlite.exec('UPDATE messages SET created_at = created_at - 31000');
+    // Null/cross-site origins must still be rejected, not treated as trusted.
+    for (const origin of ['null', 'https://evil.example']) {
+        assert.equal((await worker.fetch(post(path, { request_id }, origin), ctx.env)).status, 403);
+    }
+    const sent = await worker.fetch(post(path, { request_id, message: 'Browser followup' }), ctx.env);
+    assert.equal(sent.status, 303);
+    assert.equal(sent.headers.get('Location'), path);
+    assert.match(await (await get(path, ctx.env)).text(), /Browser followup/);
+});
+
+test('identifier and original ET submission time appear in safe HTML and plain-text notifications', async () => {
+    const ctx = setup({ mailFailure: true });
+    const identifier = '<img src=x> & "a role"';
+    const response = await worker.fetch(post('/api/message', { identifier, message: 'First line\n<script>second line</script>' }), ctx.env);
+    assert.equal(response.status, 303);
+    const path = response.headers.get('Location');
+    const originalTime = Date.parse('2026-09-09T19:05:00Z');
+    ctx.sqlite.prepare('UPDATE messages SET created_at = ?, next_attempt = 0').run(originalTime);
+    ctx.state.mailFailure = false;
+    await worker.scheduled({}, ctx.env);
+    assert.equal(ctx.sent[0].text, `${identifier} 09/09/2026 15:05 ET:\nFirst line\n<script>second line</script>`);
+    assert.match(ctx.sent[0].html, /&lt;img src=x&gt; &amp; &quot;a role&quot;/);
+    assert.match(ctx.sent[0].html, /<small><em>09\/09\/2026 15:05 ET:<\/em><\/small>/);
+    assert.doesNotMatch(ctx.sent[0].html, /<script>|<img/);
+    assert.doesNotMatch(ctx.sent[0].text, /LUCENTGPT ORIGINAL MESSAGE/);
+    ctx.sqlite.exec('UPDATE messages SET created_at = 0');
+    assert.equal((await worker.fetch(post(path, { request_id: crypto.randomUUID(), identifier: 'Changed name' }), ctx.env)).status, 303);
+    assert.ok(ctx.sent[1].text.startsWith(identifier + ' '));
+});
+
+test('blank identifiers stay anonymous and invalid identifiers are rejected', async () => {
+    const ctx = setup();
+    await start(ctx);
+    assert.ok(ctx.sent[0].text.startsWith('Anonymous '));
+    for (const identifier of ['x'.repeat(101), 'first\nsecond', 'first\u0000second']) {
+        assert.equal((await worker.fetch(post('/api/message', { identifier }), ctx.env)).status, 400);
+    }
+    assert.equal(ctx.sent.length, 1);
+});
+
+test('Eastern timestamps follow daylight saving time and use 24-hour midnight', () => {
+    assert.equal(easternTimestamp(Date.parse('2026-01-10T05:05:00Z')), '01/10/2026 00:05 ET');
+    assert.equal(easternTimestamp(Date.parse('2026-07-10T04:05:00Z')), '07/10/2026 00:05 ET');
+    assert.equal(easternTimestamp(Date.parse('2026-03-08T06:59:00Z')), '03/08/2026 01:59 ET');
+    assert.equal(easternTimestamp(Date.parse('2026-03-08T07:00:00Z')), '03/08/2026 03:00 ET');
 });

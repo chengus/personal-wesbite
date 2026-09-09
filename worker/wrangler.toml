@@ -24,5 +24,6 @@ migrations_dir = "migrations"
 [triggers]
 crons = ["*/5 * * * *"]
 
-[observability]
-enabled = false
+[observability.logs]
+enabled = true
+invocation_logs = true

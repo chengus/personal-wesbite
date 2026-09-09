@@ -4,8 +4,8 @@ A plain HTML personal website with a human answering anonymous questions. No fro
 
 ## How it works
 
-1. A visitor posts a message and receives an unguessable conversation URL.
-2. The Worker saves it in Cloudflare D1 and emails your verified Gmail inbox.
+1. A visitor optionally enters an identifier (a name, role, or anything up to 100 characters), posts a message and receives an unguessable conversation URL.
+2. The Worker saves it in Cloudflare D1 and emails your verified Gmail inbox. Each notification starts with the conversation’s identifier (or `Anonymous`) and the message submission time in `MM/DD/YYYY HH:MM ET` format. The timestamp is small and italic in HTML email; a plain-text alternative is included. Eastern Time automatically follows daylight saving time. Followups reuse the original identifier.
 3. You hit **Reply** in Gmail and write above the quoted message. The special Reply-To address routes your answer to the Worker, which publishes its plain text in the conversation.
 4. The visitor bookmarks the page and uses **Check for replies** to reload it. They can post followups on the same page; you get another email in the same conversation subject.
 
@@ -93,8 +93,8 @@ If mail delivery fails, the visitor's message is still saved, with a pending-not
 
 - Visitor URLs contain 256-bit random access tokens. Only their SHA-256 hashes are stored in D1. Anyone with the URL can read and post as that visitor. There is no lost-link recovery.
 - Owner reply tokens are independent 256-bit secrets stored in D1 and shared only with your inbox. They never appear in conversation HTML or visitor notifications. Do not forward notification emails: their Reply-To addresses are credentials for publishing as you. The exact owner envelope and From addresses are also checked; these checks alone are not email authentication.
-- Conversation pages use `no-store`, `no-referrer`, `noindex`, and a restrictive CSP. There are no scripts, cookies, tracking pixels, third-party requests, or message contents in logs. Worker observability is disabled. Do not enable request/analytics logging of secret URLs or a cache rule that overrides these headers.
-- The app stores message text, timestamps, conversation IDs, and reply credentials. It does not store visitor emails, IPs, or user agents. Cloudflare still handles network metadata, and your Cloudflare account can access D1. This is not a promise of anonymity from the infrastructure owner. Your Gmail retains notification copies according to your email settings.
+- Conversation pages use `no-store`, `strict-origin`, `noindex`, and a restrictive CSP. Referrers contain only the site origin, never the secret conversation path; this also preserves the Origin header required by HTML form posts. There are no scripts, cookies, tracking pixels, or third-party requests. The application does not explicitly log message contents. Worker logs and invocation logs are enabled; invocation logs can contain secret conversation URLs, so access to those logs can grant access to conversations. Do not configure a cache rule that overrides the privacy headers.
+- The app stores message text, optional identifiers, timestamps, conversation IDs, and reply credentials. It does not store visitor emails, IPs, or user agents. Cloudflare still handles network metadata, and your Cloudflare account can access D1. This is not a promise of anonymity from the infrastructure owner. Your Gmail retains notification copies according to your email settings.
 - Conversations expire **180 days after creation**, even if active; the scheduled job deletes their database messages. Gmail copies and any provider backups have separate retention.
 - Messages and replies are limited to 10,000 characters. A conversation holds at most 200 messages. Visitors must wait 30 seconds between followups. A global ceiling of 500 submission attempts/day protects the inbox without storing IP addresses.
 - A honeypot, origin checks, body caps, parameterized SQL, and HTML escaping are included. These do not stop determined bots; an attacker could consume the shared daily allowance. If necessary, add Turnstile with server-side verification (requires browser JavaScript).

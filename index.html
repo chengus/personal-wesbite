@@ -37,6 +37,11 @@
         <p>Ask/Tell me anything <b>anonymously</b> (trust me bro).</p>
         <form action="https://lucentlu.com/api/message" method="post">
             <p>
+                <label for="identifier">identifier (could be anything)</label><br>
+                <input id="identifier" name="identifier" type="text" maxlength="100" autocomplete="off" placeholder="A name, a role, a mysterious stranger…">
+                <br><small>Optional. Leave blank to stay anonymous.</small>
+            </p>
+            <p>
                 <label for="message">Your message</label><br>
                 <textarea id="message" name="message" rows="8" maxlength="10000" required placeholder="What's on your mind?"></textarea>
             </p>

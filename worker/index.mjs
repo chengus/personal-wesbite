@@ -6,7 +6,8 @@ const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const HEADERS = {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
-    'Referrer-Policy': 'no-referrer',
+    // Hide the secret URL path without turning form POST Origin headers into null.
+    'Referrer-Policy': 'strict-origin',
     'X-Robots-Tag': 'noindex, nofollow, noarchive',
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
@@ -16,8 +17,17 @@ const token = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8
 const hash = async value => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))].map(n => n.toString(16).padStart(2, '0')).join('');
 const redirect = path => new Response(null, { status: 303, headers: { ...HEADERS, Location: path } });
 
+export function easternTimestamp(timestamp) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', month: '2-digit', day: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(timestamp));
+    const value = type => parts.find(part => part.type === type).value;
+    return `${value('month')}/${value('day')}/${value('year')} ${value('hour')}:${value('minute')} ET`;
+}
+
 function page(title, content, status = 200) {
-    return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>${escape(title)} - LucentGPT</title><link rel="stylesheet" href="/styles.css"></head><body><main class="main-content"><h1>${escape(title)}</h1>${content}<p><a href="/">Back to LucentGPT</a></p></main></body></html>`, { status, headers: HEADERS });
+    return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="strict-origin"><title>${escape(title)} - LucentGPT</title><link rel="stylesheet" href="/styles.css"></head><body><main class="main-content"><h1>${escape(title)}</h1>${content}<p><a href="/">Back to LucentGPT</a></p></main></body></html>`, { status, headers: HEADERS });
 }
 const missing = () => page('Conversation not found', '<p>This link is incomplete, incorrect, or expired. Conversations expire 180 days after they start.</p>', 404);
 const unavailable = () => page('LucentGPT is taking a break', '<p>Please go back and try again shortly. Keep your conversation link if you already have one.</p>', 503);
@@ -68,15 +78,18 @@ async function notify(env, id) {
         WHERE id = ? AND role = 'visitor' AND notified = 0 AND next_attempt <= ? RETURNING *`).bind(now + 300000, id, now).first();
     if (!row) return;
     try {
-        const thread = await env.DB.prepare('SELECT reply_token FROM conversations WHERE id = ? AND expires_at > ?').bind(row.conversation_id, now).first();
+        const thread = await env.DB.prepare('SELECT reply_token, identifier FROM conversations WHERE id = ? AND expires_at > ?').bind(row.conversation_id, now).first();
         if (!thread) return;
         const [local, domain] = env.REPLY_EMAIL.split('@');
+        const identifier = thread.identifier || 'Anonymous';
+        const timestamp = easternTimestamp(row.created_at);
         await env.EMAIL.send({
             from: { email: env.FROM_EMAIL, name: 'LucentGPT' },
             to: env.TO_EMAIL,
             replyTo: `${local}+${thread.reply_token}@${domain}`,
             subject: `LucentGPT conversation ${row.conversation_id.slice(0, 12)}`,
-            text: `\n--- LUCENTGPT ORIGINAL MESSAGE ---\n${row.body}`,
+            text: `${identifier} ${timestamp}:\n${row.body}`,
+            html: `<div>${escape(identifier)} <small><em>${timestamp}:</em></small></div><div style="white-space: pre-wrap">${escape(row.body)}</div>`,
         });
         await env.DB.prepare('UPDATE messages SET notified = 1 WHERE id = ?').bind(id).run();
     } catch {
@@ -95,6 +108,8 @@ async function submit(request, env, access) {
     if (form.get('website')) return page('Unable to send', '<p>Please go back and try again.</p>', 400);
     const body = (form.get('message') || '').trim();
     if (!body || body.length > 10000) return page('Check your message', '<p>Please go back and enter 1–10,000 characters.</p>', 400);
+    const identifier = (form.get('identifier') || '').trim();
+    if (!access && (identifier.length > 100 || /[\u0000-\u001f\u007f]/.test(identifier))) return page('Check your identifier', '<p>Please go back and use a single line of up to 100 characters, or leave it blank.</p>', 400);
     let thread;
     if (access) {
         thread = await conversation(env, access);
@@ -113,7 +128,7 @@ async function submit(request, env, access) {
         access = token();
         const key = await hash(access);
         await env.DB.batch([
-            env.DB.prepare('INSERT INTO conversations(id, reply_token, created_at, expires_at) VALUES (?, ?, ?, ?)').bind(key, token(), now, now + RETENTION),
+            env.DB.prepare('INSERT INTO conversations(id, reply_token, created_at, expires_at, identifier) VALUES (?, ?, ?, ?, ?)').bind(key, token(), now, now + RETENTION, identifier),
             env.DB.prepare("INSERT INTO messages(id, conversation_id, role, body, created_at) VALUES (?, ?, 'visitor', ?, ?)").bind(id, key, body, now),
         ]);
     } else {

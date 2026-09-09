@@ -24,7 +24,7 @@ body {
 .contact-info { overflow-wrap: anywhere; }
 .main-content { width: 100%; max-width: 44rem; min-width: 0; padding: 2rem; }
 h2 { font-size: 2rem; margin: 0; }
-textarea { width: 100%; padding: .5rem; font: inherit; }
+input[name="identifier"], textarea { width: 100%; padding: .5rem; font: inherit; }
 textarea { resize: vertical; }
 button { padding: .35rem .75rem; font: inherit; cursor: pointer; }
 small { font-size: .875rem; }
