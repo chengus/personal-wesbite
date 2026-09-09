@@ -76,7 +76,7 @@ async function notify(env, id) {
             to: env.TO_EMAIL,
             replyTo: `${local}+${thread.reply_token}@${domain}`,
             subject: `LucentGPT conversation ${row.conversation_id.slice(0, 12)}`,
-            text: `Reply above the quoted email to publish your answer to this anonymous conversation. Plain text only; attachments are not published. Do not forward this email: its reply address can publish as you.\n\n--- LUCENTGPT ORIGINAL MESSAGE ---\n${row.body}`,
+            text: `\n--- LUCENTGPT ORIGINAL MESSAGE ---\n${row.body}`,
         });
         await env.DB.prepare('UPDATE messages SET notified = 1 WHERE id = ?').bind(id).run();
     } catch {
